@@ -25,7 +25,11 @@ static const int APU_DENOMINATOR_PAL    = 709379;
 // moving the samples to the resampler.
 // This is 535 sample frames, which corresponds to 1 video frame + some leeway
 // for use with SoundSync, multiplied by 2, for left and right samples.
+#ifdef PORTANDROID
+static const int MINIMUM_BUFFER_SIZE = 700 * 2;
+#else
 static const int MINIMUM_BUFFER_SIZE = 550 * 2;
+#endif
 
 namespace SNES {
 #include "bapu/dsp/blargg_endian.h"

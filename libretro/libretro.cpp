@@ -25,7 +25,9 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include "filter/snes_ntsc.h"
-
+#ifdef PORTANDROID
+#include "emu_retro.h"
+#endif
 #define RETRO_DEVICE_JOYPAD_MULTITAP ((1 << 8) | RETRO_DEVICE_JOYPAD)
 #define RETRO_DEVICE_LIGHTGUN_SUPER_SCOPE ((1 << 8) | RETRO_DEVICE_LIGHTGUN)
 #define RETRO_DEVICE_LIGHTGUN_JUSTIFIER ((2 << 8) | RETRO_DEVICE_LIGHTGUN)
@@ -750,6 +752,11 @@ static void update_variables(void)
 
 static void S9xAudioCallback(void*)
 {
+#ifdef PORTANDROID
+    size_t avail = S9xGetSampleCount();
+	S9xMixSamples((uint8*)cb_context.audio_buffer, avail);
+	cb_itf.cb_frame_audio_update(cb_context.frame_index, avail<<1);
+#else
     const int BUFFER_SIZE = 256;
     // This is called every time 128 to 132 samples are generated, which happens about 8 times per frame.  A buffer size of 256 samples is enough here.
     static int16_t audio_buf[BUFFER_SIZE];
@@ -768,6 +775,7 @@ static void S9xAudioCallback(void*)
         S9xMixSamples((uint8*)audio_buf, avail);
         audio_batch_cb(audio_buf, avail >> 1);
     }
+#endif
 }
 
 void retro_get_system_info(struct retro_system_info *info)
@@ -1366,8 +1374,9 @@ void retro_init(void)
     S9xInitSound(0);
 
     S9xSetSoundMute(FALSE);
+#ifndef PORTANDROID
     S9xSetSamplesAvailableCallback(S9xAudioCallback, NULL);
-
+#endif
     GFX.Pitch = MAX_SNES_WIDTH_NTSC * sizeof(uint16);
     screen_buffer = (uint16*) calloc(1, GFX.Pitch * (MAX_SNES_HEIGHT + 16));
     GFX.Screen = screen_buffer + (GFX.Pitch >> 1) * 16;
@@ -1830,7 +1839,11 @@ void retro_run()
         update_geometry();
         height = PPU.ScreenHeight;
     }
-
+#ifdef PORTANDROID
+	IPPU.RenderThisFrame = true;
+	S9xSetSoundMute(false);
+	IPPU.RenderThisFrame = !cb_context.video_skip;
+#else
     int result = -1;
     bool okay = environ_cb(RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE, &result);
     if (okay)
@@ -1845,7 +1858,7 @@ void retro_run()
         IPPU.RenderThisFrame = true;
         S9xSetSoundMute(false);
     }
-
+#endif
     poll_cb();
     report_buttons();
     S9xMainLoop();

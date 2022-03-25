@@ -16,6 +16,8 @@
 #include "conffile.h"
 #include "crosshairs.h"
 #include <stdio.h>
+#include <vector>
+
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -148,6 +150,7 @@ enum overscan_mode {
 };
 enum aspect_mode {
     ASPECT_RATIO_4_3,
+    ASPECT_RATIO_4_3_SCALED,
     ASPECT_RATIO_1_1,
     ASPECT_RATIO_NTSC,
     ASPECT_RATIO_PAL,
@@ -464,6 +467,8 @@ static void update_variables(void)
             newval = ASPECT_RATIO_PAL;
         else if (strcmp(var.value, "4:3") == 0)
             newval = ASPECT_RATIO_4_3;
+        else if (strcmp(var.value, "4:3 scaled") == 0)
+            newval = ASPECT_RATIO_4_3_SCALED;
         else if (strcmp(var.value, "uncorrected") == 0)
             newval = ASPECT_RATIO_1_1;
 
@@ -750,34 +755,6 @@ static void update_variables(void)
     }
 }
 
-static void S9xAudioCallback(void*)
-{
-#ifdef PORTANDROID
-    size_t avail = S9xGetSampleCount();
-	S9xMixSamples((uint8*)cb_context.audio_buffer, avail);
-	cb_itf.cb_frame_audio_update(cb_context.frame_index, avail<<1);
-#else
-    const int BUFFER_SIZE = 256;
-    // This is called every time 128 to 132 samples are generated, which happens about 8 times per frame.  A buffer size of 256 samples is enough here.
-    static int16_t audio_buf[BUFFER_SIZE];
-
-    size_t avail = S9xGetSampleCount();
-    while (avail >= BUFFER_SIZE)
-    {
-        //this loop will never be entered, but handle oversized sample counts just in case
-        S9xMixSamples((uint8*)audio_buf, BUFFER_SIZE);
-        audio_batch_cb(audio_buf, BUFFER_SIZE >> 1);
-
-        avail -= BUFFER_SIZE;
-    }
-    if (avail > 0)
-    {
-        S9xMixSamples((uint8*)audio_buf, avail);
-        audio_batch_cb(audio_buf, avail >> 1);
-    }
-#endif
-}
-
 void retro_get_system_info(struct retro_system_info *info)
 {
     memset(info,0,sizeof(retro_system_info));
@@ -797,6 +774,10 @@ float get_aspect_ratio(unsigned width, unsigned height)
     if (aspect_ratio_mode == ASPECT_RATIO_4_3)
     {
         return SNES_4_3;
+    }
+    else if (aspect_ratio_mode == ASPECT_RATIO_4_3_SCALED)
+    {
+        return (4.0f * (MAX_SNES_HEIGHT - height)) / (3.0f * (MAX_SNES_WIDTH - width));
     }
     else if (aspect_ratio_mode == ASPECT_RATIO_1_1)
     {
@@ -1371,12 +1352,10 @@ void retro_init(void)
         exit(1);
     }
 
-    S9xInitSound(0);
+    S9xInitSound(32);
 
     S9xSetSoundMute(FALSE);
-#ifndef PORTANDROID
-    S9xSetSamplesAvailableCallback(S9xAudioCallback, NULL);
-#endif
+    S9xSetSamplesAvailableCallback(NULL, NULL);
     GFX.Pitch = MAX_SNES_WIDTH_NTSC * sizeof(uint16);
     screen_buffer = (uint16*) calloc(1, GFX.Pitch * (MAX_SNES_HEIGHT + 16));
     GFX.Screen = screen_buffer + (GFX.Pitch >> 1) * 16;
@@ -1839,11 +1818,7 @@ void retro_run()
         update_geometry();
         height = PPU.ScreenHeight;
     }
-#ifdef PORTANDROID
-	IPPU.RenderThisFrame = true;
-	S9xSetSoundMute(false);
-	IPPU.RenderThisFrame = !cb_context.video_skip;
-#else
+#ifndef PORTANDROID
     int result = -1;
     bool okay = environ_cb(RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE, &result);
     if (okay)
@@ -1858,11 +1833,32 @@ void retro_run()
         IPPU.RenderThisFrame = true;
         S9xSetSoundMute(false);
     }
-#endif
     poll_cb();
     report_buttons();
     S9xMainLoop();
-    S9xAudioCallback(NULL);
+
+    static std::vector<int16_t> audio_buffer;
+
+    size_t avail = S9xGetSampleCount();
+
+    if (audio_buffer.size() < avail)
+        audio_buffer.resize(avail);
+
+    S9xMixSamples((uint8*)&audio_buffer[0], avail);
+    audio_batch_cb(&audio_buffer[0], avail >> 1);
+#else
+    IPPU.RenderThisFrame = true;
+    S9xSetSoundMute(false);
+    IPPU.RenderThisFrame = !cb_context.video_skip;
+
+    poll_cb();
+    report_buttons();
+    S9xMainLoop();
+
+    size_t avail = S9xGetSampleCount();
+    S9xMixSamples((uint8*)cb_context.audio_buffer, avail);
+    cb_itf.cb_frame_audio_update(cb_context.frame_index, avail<<1);
+#endif
 }
 
 void retro_deinit()
@@ -2034,7 +2030,7 @@ bool8 S9xDeinitUpdate(int width, int height)
         else
             snes_ntsc_blit(snes_ntsc, GFX.Screen, GFX.Pitch / 2, burst_phase, width, height, snes_ntsc_buffer, GFX.Pitch);
 
-        video_cb(snes_ntsc_buffer + ((int)(GFX.Pitch >> 1) * overscan_offset), SNES_NTSC_OUT_WIDTH(width), height, GFX.Pitch);
+        video_cb(snes_ntsc_buffer + ((int)(GFX.Pitch >> 1) * overscan_offset), SNES_NTSC_OUT_WIDTH(256), height, GFX.Pitch);
     }
     else if (width == MAX_SNES_WIDTH && hires_blend)
     {

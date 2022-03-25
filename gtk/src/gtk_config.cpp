@@ -90,7 +90,7 @@ int Snes9xConfig::load_defaults()
     save_sram_after_secs = 0;
     rom_loaded = false;
     multithreading = false;
-    splash_image = SPLASH_IMAGE_COMBO;
+    splash_image = SPLASH_IMAGE_STARFIELD;
     hw_accel = 0;
     allow_opengl = false;
     allow_xv = false;
@@ -205,24 +205,6 @@ int Snes9xConfig::load_defaults()
     shortcut.fill(Binding());
 
     return 0;
-}
-
-void Snes9xConfig::joystick_register_centers()
-{
-    for (auto &j : joystick)
-        j.register_centers();
-}
-
-void Snes9xConfig::flush_joysticks()
-{
-    for (auto &j : joystick)
-        j.flush();
-}
-
-void Snes9xConfig::set_joystick_mode(int mode)
-{
-    for (auto &j : joystick)
-        j.mode = mode;
 }
 
 int Snes9xConfig::save_config_file()

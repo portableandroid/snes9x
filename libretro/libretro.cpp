@@ -27,7 +27,9 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include "filter/snes_ntsc.h"
-
+#ifdef PORTANDROID
+#include "emu_retro.h"
+#endif
 #define RETRO_DEVICE_JOYPAD_MULTITAP ((1 << 8) | RETRO_DEVICE_JOYPAD)
 #define RETRO_DEVICE_LIGHTGUN_SUPER_SCOPE ((1 << 8) | RETRO_DEVICE_LIGHTGUN)
 #define RETRO_DEVICE_LIGHTGUN_JUSTIFIER ((2 << 8) | RETRO_DEVICE_LIGHTGUN)
@@ -755,7 +757,11 @@ void S9xSyncSpeed() {
         S9xClearSamples();
         return;
     }
-
+#ifdef PORTANDROID
+    size_t avail = S9xGetSampleCount();
+    S9xMixSamples((uint8*)cb_context.audio_buffer, (int)avail);
+    cb_itf.cb_frame_audio_update(cb_context.frame_index, avail<<1);
+#else
     static std::vector<int16_t> audio_buffer;
 
     size_t avail = S9xGetSampleCount();
@@ -765,6 +771,7 @@ void S9xSyncSpeed() {
 
     S9xMixSamples((uint8*)&audio_buffer[0], avail);
     audio_batch_cb(&audio_buffer[0], avail >> 1);
+#endif
 }
 
 void retro_get_system_info(struct retro_system_info *info)
@@ -1827,7 +1834,7 @@ void retro_run()
         update_geometry();
         height = PPU.ScreenHeight;
     }
-
+#ifndef PORTANDROID
     int result = -1;
     bool okay = environ_cb(RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE, &result);
     if (okay)
@@ -1842,7 +1849,10 @@ void retro_run()
         IPPU.RenderThisFrame = true;
         S9xSetSoundMute(false);
     }
-
+#else
+    IPPU.RenderThisFrame = !cb_context.video_skip;
+    S9xSetSoundMute(false);
+#endif
     poll_cb();
     report_buttons();
     S9xMainLoop();

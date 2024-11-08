@@ -13,13 +13,8 @@
 #include "gtk_display_driver_gtk.h"
 
 #include "snes9x.h"
-#include "memmap.h"
-#include "cpuexec.h"
-#include "ppu.h"
 #include "gfx.h"
 #include "netplay.h"
-#include "controls.h"
-#include "movie.h"
 
 #if defined(USE_XV) && defined(GDK_WINDOWING_X11)
 #include "gtk_display_driver_xv.h"
@@ -477,7 +472,7 @@ void apply_filter_scale(int &width, int &height)
 {
     if (gui_config->scale_method == FILTER_NTSC)
     {
-        width = SNES_NTSC_OUT_WIDTH(width);
+        width = SNES_NTSC_OUT_WIDTH(256);
         height *= 2;
         return;
     }
@@ -617,6 +612,10 @@ static void internal_threaded_filter(uint8 *src_buffer,
                                      int width,
                                      int height)
 {
+    // NTSC filter has internal state, so it can't be threaded properly.
+    if (gui_config->scale_method == FILTER_NTSC)
+        return internal_filter(src_buffer, src_pitch, dst_buffer, dst_pitch, width, height);
+
     /* If the threadpool doesn't exist, create it */
     create_thread_pool();
 
@@ -785,7 +784,7 @@ void S9xQueryDrivers()
 
     gui_config->allow_xv = false;
 #if defined(USE_XV) && defined(GDK_WINDOWING_X11)
-    if (GDK_IS_X11_DISPLAY(gdk_display))
+    if (is_x11())
         gui_config->allow_xv = S9xXVDisplayDriver::query_availability();
 #endif
 
@@ -793,7 +792,7 @@ void S9xQueryDrivers()
 
     gui_config->allow_xrandr = false;
 #ifdef GDK_WINDOWING_X11
-    if (GDK_IS_X11_DISPLAY(gdk_display))
+    if (is_x11())
     {
         Display *dpy = gdk_x11_display_get_xdisplay(gdk_display);
         Window xid = gdk_x11_window_get_xid(top_level->window->get_window()->gobj());
@@ -908,7 +907,7 @@ static void S9xInitDriver()
 {
     // Only OpenGL is supported on Wayland
 #ifdef GDK_WINDOWING_WAYLAND
-    if (GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default()))
+    if (is_wayland())
     {
         if (gui_config->display_driver != "vulkan")
             gui_config->display_driver = "opengl";
@@ -961,6 +960,7 @@ void S9xDeinitDisplay()
     if (driver)
         driver->deinit();
     delete driver;
+    driver = nullptr;
 
     if (pool)
     {

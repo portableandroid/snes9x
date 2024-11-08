@@ -1080,7 +1080,7 @@ int CMemory::ScoreHiROM (bool8 skip_header, int32 romoff)
 	// Check for extended HiROM expansion used in Mother 2 Deluxe et al.
 	// Looks for size byte 13 (8MB) and an actual ROM size greater than 4MB
 	if (buf[0xd7] == 13 && CalculatedSize > 1024 * 1024 * 4)
-		score += 5;
+		score += 3;
 
 	if (buf[0xd5] & 0x1)
 		score += 2;
@@ -2892,10 +2892,10 @@ void CMemory::Map_SuperFXLoROMMap (void)
 	if (CalculatedSize > 0x400000)
 	{
 		map_lorom(0x00, 0x3f, 0x8000, 0xffff, 0x200000);
-		map_lorom_offset(0x80, 0xbf, 0x8000, 0xffff, 0x200000, 0x200000);
+		map_lorom(0x80, 0xbf, 0x8000, 0xffff, 0x200000);
 
 		map_hirom_offset(0x40, 0x5f, 0x0000, 0xffff, 0x200000, 0);
-		map_hirom_offset(0xc0, 0xff, 0x0000, 0xffff, CalculatedSize - 0x400000, 0x400000);
+		map_hirom_offset(0xc0, 0xff, 0x0000, 0xffff, CalculatedSize, 0);
 
 		map_space(0x00, 0x3f, 0x6000, 0x7fff, SRAM - 0x6000);
 		map_space(0x80, 0xbf, 0x6000, 0x7fff, SRAM - 0x6000);
@@ -2905,10 +2905,10 @@ void CMemory::Map_SuperFXLoROMMap (void)
 	else if (CalculatedSize > 0x200000)
 	{
 		map_lorom(0x00, 0x3f, 0x8000, 0xffff, 0x200000);
-		map_lorom_offset(0x80, 0xbf, 0x8000, 0xffff, CalculatedSize - 0x200000, 0x200000);
+		map_lorom(0x80, 0xbf, 0x8000, 0xffff, 0x200000);
 
 		map_hirom_offset(0x40, 0x5f, 0x0000, 0xffff, 0x200000, 0);
-		map_hirom_offset(0xc0, 0xff, 0x0000, 0xffff, CalculatedSize - 0x200000, 0x200000);
+		map_hirom_offset(0xc0, 0xff, 0x0000, 0xffff, CalculatedSize, 0);
 
 		map_space(0x00, 0x3f, 0x6000, 0x7fff, SRAM - 0x6000);
 		map_space(0x80, 0xbf, 0x6000, 0x7fff, SRAM - 0x6000);
@@ -3011,7 +3011,7 @@ void CMemory::Map_SA1LoROMMap (void)
 
 	// SA-1 Banks 40->4f
 	for (int c = 0x400; c < 0x500; c++)
-		SA1.Map[c] = SA1.WriteMap[c] = (uint8*)MAP_HIROM_SRAM;
+		SA1.Map[c] = SA1.WriteMap[c] = (uint8*) MAP_SA1RAM;
 
 	// SA-1 Banks 60->6f
 	for (int c = 0x600; c < 0x700; c++)
@@ -4006,7 +4006,8 @@ void CMemory::CheckForAnyPatch(const char *rom_filename, bool8 header, int32 &ro
             if (!flag)
                 try_zip_ips_sequence("ip%d");
 
-            assert(unzClose(file) == UNZ_OK);
+            int close_ret = unzClose(file);
+            assert(close_ret == UNZ_OK);
 
             if (flag)
                 return;

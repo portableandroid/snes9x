@@ -7,7 +7,6 @@
 #include "gtk_s9x.h"
 #include "gtk_cheat.h"
 #include "cheats.h"
-#include "display.h"
 
 enum {
     COLUMN_ENABLED = 0,
@@ -94,7 +93,6 @@ Snes9xCheats::Snes9xCheats()
     get_object<Gtk::Button>("disable_all_button")->signal_clicked().connect(sigc::mem_fun(*this, &Snes9xCheats::disable_all));
     get_object<Gtk::Button>("delete_all_cheats_button")->signal_clicked().connect(sigc::mem_fun(*this, &Snes9xCheats::delete_all_cheats));
     get_object<Gtk::Button>("cheat_search_button")->signal_clicked().connect(sigc::mem_fun(*this, &Snes9xCheats::search_database));
-    get_object<Gtk::Button>("update_button")->signal_clicked().connect(sigc::mem_fun(*this, &Snes9xCheats::update_code));
 
     gtk_widget_realize(GTK_WIDGET(window->gobj()));
 }
@@ -288,7 +286,9 @@ void Snes9xCheats::search_database()
 
     for (const auto &dir : { S9xGetDirectory(CHEAT_DIR),
                              get_config_dir(),
-                             std::string(DATADIR) })
+                             std::string(DATADIR),
+                             std::string("/usr/share/snes9x"),
+                             std::string("/usr/local/share/snes9x") })
     {
         filename = dir + "/cheats.bml";
         result = S9xImportCheatsFromDatabase(filename);

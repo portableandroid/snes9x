@@ -159,7 +159,7 @@ bool CDirect3D::Initialize(HWND hWnd)
 
 void CDirect3D::DeInitialize()
 {
-	if (S9xImGuiRunning())
+	if (init_done && S9xImGuiRunning())
 	{
 		ImGui_ImplDX9_Shutdown();
 		S9xImGuiDeinit();
@@ -558,7 +558,7 @@ bool CDirect3D::ResetDevice()
 
 	if (S9xImGuiRunning())
 	{
-		ImGui_ImplDX9_Shutdown();
+		ImGui_ImplDX9_InvalidateDeviceObjects();
 	}
 
 	//release prior to reset
@@ -612,7 +612,7 @@ bool CDirect3D::ResetDevice()
 
 	if (S9xImGuiRunning())
 	{
-		ImGui_ImplDX9_Init(pDevice);
+		ImGui_ImplDX9_CreateDeviceObjects();
 	}
 
 	return true;

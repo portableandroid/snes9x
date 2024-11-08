@@ -9,11 +9,10 @@
 #include "gtk_display_driver_vulkan.h"
 #include "gtk_shader_parameters.h"
 #include "snes9x.h"
-#include "gfx.h"
 #include "fmt/format.h"
 
 #include "snes9x_imgui.h"
-#include "../../external/imgui/imgui_impl_vulkan.h"
+#include "external/imgui/imgui_impl_vulkan.h"
 
 #ifdef GDK_WINDOWING_WAYLAND
 static WaylandSurface::Metrics get_metrics(Gtk::DrawingArea &w)
@@ -58,7 +57,7 @@ bool S9xVulkanDisplayDriver::init_imgui()
         .setPoolSizes(pool_sizes)
         .setMaxSets(1000)
         .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
-    imgui_descriptor_pool = device.createDescriptorPoolUnique(descriptor_pool_create_info);
+    imgui_descriptor_pool = device.createDescriptorPoolUnique(descriptor_pool_create_info).value;
 
     ImGui_ImplVulkan_InitInfo init_info{};
     init_info.Instance = context->instance.get();
@@ -66,12 +65,12 @@ bool S9xVulkanDisplayDriver::init_imgui()
     init_info.Device = context->device;;
     init_info.QueueFamily = context->graphics_queue_family_index;
     init_info.Queue = context->queue;
-    init_info.DescriptorPool = imgui_descriptor_pool.get();
+    init_info.DescriptorPool = static_cast<VkDescriptorPool>(imgui_descriptor_pool.get());
     init_info.Subpass = 0;
     init_info.MinImageCount = context->swapchain->get_num_frames();
     init_info.ImageCount = context->swapchain->get_num_frames();
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    ImGui_ImplVulkan_Init(&init_info, context->swapchain->get_render_pass());
+    ImGui_ImplVulkan_Init(&init_info, static_cast<VkRenderPass>(context->swapchain->get_render_pass()));
 
     auto cmd = context->begin_cmd_buffer();
     ImGui_ImplVulkan_CreateFontsTexture(cmd);
@@ -90,10 +89,10 @@ void S9xVulkanDisplayDriver::refresh()
     int new_width, new_height;
 
 #ifdef GDK_WINDOWING_WAYLAND
-    if (GDK_IS_WAYLAND_WINDOW(drawing_area->get_window()->gobj()))
+    if (is_wayland())
     {
-        wayland_surface->resize(get_metrics(*drawing_area));
-        std::tie(new_width, new_height) = wayland_surface->get_size();
+        std::tie(new_width, new_height) = wayland_surface->get_size_for_metrics(get_metrics(*drawing_area));
+        context->swapchain->set_desired_size(new_width, new_height);
     }
     else
 #endif
@@ -104,10 +103,15 @@ void S9xVulkanDisplayDriver::refresh()
 
     if (new_width != current_width || new_height != current_height)
     {
-        context->recreate_swapchain(new_width, new_height);
+        context->recreate_swapchain();
         context->wait_idle();
         current_width = new_width;
         current_height = new_height;
+
+#ifdef GDK_WINDOWING_WAYLAND
+        if (is_wayland())
+            wayland_surface->resize(get_metrics(*drawing_area));
+#endif
     }
 }
 
@@ -119,24 +123,35 @@ int S9xVulkanDisplayDriver::init()
     context = std::make_unique<Vulkan::Context>();
 
 #ifdef GDK_WINDOWING_WAYLAND
-    if (GDK_IS_WAYLAND_WINDOW(drawing_area->get_window()->gobj()))
+    if (is_wayland())
     {
         wayland_surface = std::make_unique<WaylandSurface>();
         wl_surface *surface = gdk_wayland_window_get_wl_surface(drawing_area->get_window()->gobj());
         wl_display *display = gdk_wayland_display_get_wl_display(drawing_area->get_display()->gobj());
-        if (!wayland_surface->attach(display, surface, get_metrics(*drawing_area)))
+
+        context->swapchain->set_desired_size(current_width, current_height);
+        if (!wayland_surface->attach(display, surface, get_metrics(*drawing_area)) ||
+            !context->init_wayland() ||
+            !context->create_wayland_surface(wayland_surface->display, wayland_surface->child) ||
+            !context->create_swapchain())
         {
+            context.reset();
             return -1;
         }
-        context->init_wayland(wayland_surface->display, wayland_surface->child, current_width, current_height);
     }
 #endif
-    if (GDK_IS_X11_WINDOW(drawing_area->get_window()->gobj()))
+    if (is_x11())
     {
         display = gdk_x11_display_get_xdisplay(drawing_area->get_display()->gobj());
         xid = gdk_x11_window_get_xid(drawing_area->get_window()->gobj());
 
-        context->init_Xlib(display, xid);
+        if (!context->init_Xlib() ||
+            !context->create_Xlib_surface(display, xid) ||
+            !context->create_swapchain())
+        {
+            context.reset();
+            return -1;
+        }
     }
 
     device = context->device;
@@ -218,6 +233,7 @@ void S9xVulkanDisplayDriver::update(uint16_t *buffer, int width, int height, int
             throttle.wait_for_frame_and_rebase_time();
         }
 
+        context->swapchain->set_vsync(gui_config->sync_to_vblank);
         context->swapchain->swap();
 
         if (gui_config->reduce_input_lag)
@@ -248,4 +264,20 @@ void S9xVulkanDisplayDriver::save(const char *filename)
 bool S9xVulkanDisplayDriver::is_ready()
 {
     return true;
+}
+
+void S9xVulkanDisplayDriver::shrink()
+{
+#ifdef GDK_WINDOWING_WAYLAND
+    if (is_wayland())
+        wayland_surface->shrink();
+#endif
+}
+
+void S9xVulkanDisplayDriver::regrow()
+{
+#ifdef GDK_WINDOWING_WAYLAND
+    if (is_wayland())
+        wayland_surface->regrow();
+#endif
 }

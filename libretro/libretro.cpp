@@ -757,11 +757,7 @@ void S9xSyncSpeed() {
         S9xClearSamples();
         return;
     }
-#ifdef PORTANDROID
-    size_t avail = S9xGetSampleCount();
-    S9xMixSamples((uint8*)cb_context.audio_buffer, (int)avail);
-    cb_itf.cb_frame_audio_update(cb_context.frame_index, avail<<1);
-#else
+
     static std::vector<int16_t> audio_buffer;
 
     size_t avail = S9xGetSampleCount();
@@ -771,7 +767,6 @@ void S9xSyncSpeed() {
 
     S9xMixSamples((uint8*)&audio_buffer[0], avail);
     audio_batch_cb(&audio_buffer[0], avail >> 1);
-#endif
 }
 
 void retro_get_system_info(struct retro_system_info *info)

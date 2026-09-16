@@ -228,7 +228,7 @@ void S9xUpdateCheatInMemory(SCheat &c)
                 /* Condition is now false, let the byte stand */
                 c.cond_true = false;
             }
-            else if (c.saved_byte == c.cond_byte && !c.cond_true)
+            else if (c.saved_byte == c.cond_byte)
             {
                 c.cond_true = true;
                 S9xSetByteFree(c.byte, c.address);
@@ -268,6 +268,13 @@ void S9xDisableCheat(SCheat &c)
 
     S9xSetByteFree (c.saved_byte, c.address);
     c.cond_true = false;
+}
+
+void S9xMoveCheatGroup(int from, int to)
+{
+    auto item = Cheat.group[from];
+    Cheat.group.erase(Cheat.group.begin() + from);
+    Cheat.group.insert(Cheat.group.begin() + to, item);
 }
 
 void S9xDeleteCheatGroup(uint32 g)
@@ -627,6 +634,9 @@ static void S9xLoadCheatsFromBMLNode(bml_node &n)
             continue;
 
         auto index = S9xAddCheatGroup(name, code);
+        if (index == -1)
+            continue;
+
         if (enable)
             S9xEnableCheatGroup(index);
     }

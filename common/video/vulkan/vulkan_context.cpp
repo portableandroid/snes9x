@@ -7,7 +7,7 @@
 namespace Vulkan
 {
 
-static std::unique_ptr<vk::DynamicLoader> dl;
+static std::unique_ptr<vk::detail::DynamicLoader> dynamic_loader;
 
 Context::Context()
 {
@@ -30,33 +30,51 @@ Context::~Context()
 
 static bool load_loader()
 {
-    if (dl)
+    if (dynamic_loader)
         return true;
 
-    dl = std::make_unique<vk::DynamicLoader>();
-    if (!dl->success())
+    dynamic_loader = std::make_unique<vk::detail::DynamicLoader>();
+    if (!dynamic_loader->success())
     {
-        dl.reset();
+        dynamic_loader.reset();
         return false;
     }
 
     auto vkGetInstanceProcAddr =
-        dl->getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        dynamic_loader->getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
     return true;
 }
 
-static vk::UniqueInstance create_instance_preamble(const char *wsi_extension)
+static vk::UniqueInstance create_instance()
 {
     load_loader();
-    if (!dl || !dl->success())
+    if (!dynamic_loader || !dynamic_loader->success())
         return {};
 
-    std::vector<const char *> extensions = {
-        wsi_extension,
-        VK_KHR_SURFACE_EXTENSION_NAME
+    // Try to load any usable surface extensions
+    std::vector<std::string> surface_extension_names = {
+        "VK_KHR_surface",
+        "VK_KHR_xlib_surface",
+        "VK_KHR_wayland_surface",
+        "VK_KHR_win32_surface",
     };
+
+    auto instance_extensions = vk::enumerateInstanceExtensionProperties().value;
+
+    std::vector<const char *> extensions;
+    for (auto &extension : instance_extensions)
+    {
+        if (std::find_if(surface_extension_names.begin(), surface_extension_names.end(),
+            [&extension](auto &e) {
+                return e == extension.extensionName;
+            }) != surface_extension_names.end())
+        {
+            extensions.push_back(extension.extensionName);
+        }
+    }
+
     vk::ApplicationInfo application_info({}, {}, {}, {}, VK_API_VERSION_1_1);
     vk::InstanceCreateInfo instance_create_info({}, &application_info, {}, extensions);
 
@@ -76,7 +94,7 @@ static vk::UniqueInstance create_instance_preamble(const char *wsi_extension)
 std::vector<std::string> Vulkan::Context::get_device_list()
 {
     std::vector<std::string> device_names;
-    auto instance = create_instance_preamble(VK_KHR_SURFACE_EXTENSION_NAME);
+    auto instance = create_instance();
     if (!instance)
         return {};
 
@@ -94,15 +112,6 @@ std::vector<std::string> Vulkan::Context::get_device_list()
 }
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
-bool Context::init_win32()
-{
-    instance = create_instance_preamble(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-    if (!instance)
-        return false;
-
-    return init();
-}
-
 bool Context::create_win32_surface(HINSTANCE hinstance, HWND hwnd)
 {
     auto win32_surface_create_info = vk::Win32SurfaceCreateInfoKHR{}
@@ -117,15 +126,6 @@ bool Context::create_win32_surface(HINSTANCE hinstance, HWND hwnd)
 #endif
 
 #ifdef VK_USE_PLATFORM_XLIB_KHR
-bool Context::init_Xlib()
-{
-    instance = create_instance_preamble(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
-    if (!instance)
-        return false;
-
-    return init();
-}
-
 bool Context::create_Xlib_surface(Display *dpy, Window xid)
 {
     auto retval = instance->createXlibSurfaceKHRUnique({ {}, dpy, xid });
@@ -138,14 +138,6 @@ bool Context::create_Xlib_surface(Display *dpy, Window xid)
 #endif
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-bool Context::init_wayland()
-{
-    instance = create_instance_preamble(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
-    if (!instance)
-        return false;
-
-    return init();
-}
 
 bool Context::create_wayland_surface(wl_display *dpy, wl_surface *parent)
 {
@@ -175,6 +167,9 @@ bool Context::destroy_surface()
 
 bool Context::init()
 {
+    instance = create_instance();
+    if (!instance)
+        return false;
     init_device();
     init_vma();
     init_command_pool();
@@ -261,6 +256,38 @@ bool Context::init_device()
     if (!device_chosen)
         return false;
 
+    auto chain = physical_device.getFeatures2<vk::PhysicalDeviceFeatures2,
+                                              vk::PhysicalDeviceAntiLagFeaturesAMD,
+                                              vk::PhysicalDevicePresentWaitFeaturesKHR>();
+
+    if (chain.isLinked<vk::PhysicalDevicePresentWaitFeaturesKHR>())
+    {
+        std::vector<const char *> present_wait_extensions = {
+            VK_KHR_PRESENT_ID_EXTENSION_NAME,
+            VK_KHR_PRESENT_WAIT_EXTENSION_NAME
+        };
+
+        if (chain.get<vk::PhysicalDevicePresentWaitFeaturesKHR>().presentWait &&
+            check_extensions(present_wait_extensions, physical_device))
+        {
+            for (auto &ext : present_wait_extensions)
+                required_extensions.push_back(ext);
+            have_present_wait = true;
+        }
+    }
+
+    if (chain.isLinked<vk::PhysicalDeviceAntiLagFeaturesAMD>())
+    {
+        std::vector<const char *> anti_lag_extensions = { VK_AMD_ANTI_LAG_EXTENSION_NAME };
+
+        if (chain.get<vk::PhysicalDeviceAntiLagFeaturesAMD>().antiLag &&
+            check_extensions(anti_lag_extensions, physical_device))
+        {
+            required_extensions.push_back(anti_lag_extensions[0]);
+            have_anti_lag = true;
+        }
+    }
+
     if (auto index = find_graphics_queue(physical_device))
         graphics_queue_family_index = *index;
     else
@@ -269,6 +296,13 @@ bool Context::init_device()
     std::vector<float> priorities = { 1.0f };
     vk::DeviceQueueCreateInfo dqci({}, graphics_queue_family_index, priorities);
     vk::DeviceCreateInfo dci({}, dqci, {}, required_extensions);
+
+    vk::PhysicalDevicePresentWaitFeaturesKHR physical_device_present_wait_feature(have_present_wait);
+    dci.setPNext(&physical_device_present_wait_feature);
+    vk::PhysicalDevicePresentIdFeaturesKHR physical_device_present_id_feature(have_present_wait);
+    physical_device_present_wait_feature.setPNext(&physical_device_present_id_feature);
+    vk::PhysicalDeviceAntiLagFeaturesAMD physical_device_anti_lag_feature(have_anti_lag);
+    physical_device_present_id_feature.setPNext(&physical_device_anti_lag_feature);
 
     device = physical_device.createDevice(dci).value;
     queue = device.getQueue(graphics_queue_family_index, 0);
@@ -290,6 +324,37 @@ bool Context::init_vma()
     allocator = vma::createAllocator(allocator_create_info).value;
 
     return true;
+}
+
+bool Context::update_anti_lag_stage(vk::AntiLagStageAMD stage)
+{
+    if (!have_anti_lag || !device)
+        return false;
+
+    vk::AntiLagPresentationInfoAMD pinfo;
+    vk::AntiLagDataAMD data;
+
+    pinfo.setFrameIndex(anti_lag_frame_index);
+    pinfo.setStage(stage);
+    data.setPPresentationInfo(&pinfo);
+    data.setMaxFPS(0);
+    data.setMode(vk::AntiLagModeAMD::eOn);
+    device.antiLagUpdateAMD(data);
+
+    if (stage == vk::AntiLagStageAMD::ePresent)
+        anti_lag_frame_index++;
+
+    return true;
+}
+
+bool Context::update_anti_lag_input()
+{
+    return update_anti_lag_stage(vk::AntiLagStageAMD::eInput);
+}
+
+bool Context::update_anti_lag_present()
+{
+    return update_anti_lag_stage(vk::AntiLagStageAMD::ePresent);
 }
 
 bool Context::create_swapchain()
@@ -316,15 +381,6 @@ vk::CommandBuffer Context::begin_cmd_buffer()
     one_time_use_cmd = command_buffer[0];
     one_time_use_cmd.begin({ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
     return one_time_use_cmd;
-}
-
-void Context::hard_barrier(vk::CommandBuffer cmd)
-{
-    vk::MemoryBarrier barrier(vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
-                              vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite);
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
-                        vk::PipelineStageFlagBits::eAllCommands,
-                        {}, barrier, {}, {});
 }
 
 void Context::end_cmd_buffer()

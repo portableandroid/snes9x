@@ -48,7 +48,7 @@ void ShaderChain::construct_buffer_objects()
 
         for (auto &uniform : pipeline.shader->uniforms)
         {
-            void *location = 0;
+            void *location = nullptr;
             const float MVP[16] = { 1.0f, 0.0f, 0.0f, 0.0f,
                                     0.0f, 1.0f, 0.0f, 0.0f,
                                     0.0f, 0.0f, 1.0f, 0.0f,
@@ -188,7 +188,7 @@ void ShaderChain::update_and_propagate_sizes(int original_width_new, int origina
     }
 }
 
-bool ShaderChain::load_shader_preset(std::string filename)
+bool ShaderChain::load_shader_preset(const std::string &filename)
 {
     if (!ends_with(filename, ".slangp"))
         printf("Warning: loading preset without .slangp extension\n");
@@ -232,7 +232,7 @@ bool ShaderChain::load_shader_preset(std::string filename)
 
         if (p.ubo_size)
             num_ubos++;
-        if (p.samplers.size() > 0)
+        if (!p.samplers.empty())
             num_samplers += p.samplers.size();
     }
 
@@ -268,7 +268,11 @@ bool ShaderChain::load_shader_preset(std::string filename)
         .setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite)
         .setRequiredFlags(vk::MemoryPropertyFlagBits::eHostVisible);
 
-    std::tie(vertex_buffer, vertex_buffer_allocation) = context->allocator.createBuffer(buffer_create_info, allocation_create_info).value;
+    auto result = context->allocator.createBuffer(buffer_create_info, allocation_create_info);
+    if (!result.has_value())
+        return false;
+    vertex_buffer = std::get<vk::Buffer>(result.value);
+    vertex_buffer_allocation = std::get<vma::Allocation>(result.value);
 
     auto vertex_buffer_memory = context->allocator.mapMemory(vertex_buffer_allocation).value;
     memcpy(vertex_buffer_memory, vertex_data, sizeof(vertex_data));
@@ -438,7 +442,7 @@ bool ShaderChain::do_frame_without_swap(uint8_t *data, int width, int height, in
         cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipe.pipeline.get());
         cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipe.pipeline_layout.get(), 0, frame.descriptor_set.get(), {});
         cmd.bindVertexBuffers(0, vertex_buffer, { 0 });
-        if (pipe.push_constants.size() > 0)
+        if (!pipe.push_constants.empty())
             cmd.pushConstants(pipe.pipeline_layout.get(), vk::ShaderStageFlagBits::eAllGraphics, 0, pipe.push_constants.size(), pipe.push_constants.data());
 
         if (is_last_pass)
@@ -544,7 +548,7 @@ void ShaderChain::upload_original(uint8_t *data, int width, int height, int stri
 
 bool ShaderChain::load_lookup_textures()
 {
-    if (preset->textures.size() < 1)
+    if (preset->textures.empty())
         return true;
 
     lookup_textures.clear();

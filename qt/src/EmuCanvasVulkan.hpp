@@ -13,8 +13,7 @@
 class EmuCanvasVulkan : public EmuCanvas
 {
   public:
-    EmuCanvasVulkan(EmuConfig *config, QWidget *parent, QWidget *main_window);
-    ~EmuCanvasVulkan();
+    EmuCanvasVulkan(EmuConfig *config, QWidget *main_window);
 
     bool createContext() override;
     void deinit() override;
@@ -26,6 +25,7 @@ class EmuCanvasVulkan : public EmuCanvas
     void shaderChanged() override;
     void showParametersDialog() override;
     void saveParameters(std::string filename) override;
+    void signalInputStage() override;
 
     void draw() override;
 

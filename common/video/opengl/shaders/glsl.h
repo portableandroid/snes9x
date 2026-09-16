@@ -164,7 +164,7 @@ struct GLSLShader
                 GLSLViewportCallback vpcallback);
     void set_shader_vars(unsigned int pass, bool inverted);
     void clear_shader_vars();
-    void read_shader_file_with_includes(std::string filename,
+    void read_shader_file_with_includes(const std::string& filename,
                                         std::vector<std::string> &lines,
                                         int p);
     GLuint compile_shader(std::vector<std::string> &lines, const char *aliases,
@@ -174,6 +174,7 @@ struct GLSLShader
     void register_uniforms();
 
     IniFile ini;
+    std::string name;
 
     std::vector<GLSLPass> pass;
     std::vector<GLSLLut> lut;
@@ -190,8 +191,8 @@ struct GLSLShader
     bool using_slang;
 #ifdef USE_SLANG
     std::string slang_get_stage(std::vector<std::string> &lines,
-                                std::string name);
-    GLint slang_compile(std::vector<std::string> &lines, std::string stage);
+                                const std::string &name);
+    GLint slang_compile(std::vector<std::string> &lines, const std::string& stage);
     void slang_introspect();
     void slang_set_shader_vars(int p, bool inverted);
     void slang_clear_shader_vars();

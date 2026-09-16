@@ -95,14 +95,12 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 endif()
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
 list(APPEND LIBS Qt6::Widgets Qt6::Gui)
-list(APPEND INCLUDES ${Qt6Gui_PRIVATE_INCLUDE_DIRS})
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL REQUIRED sdl2)
 pkg_check_modules(ZLIB REQUIRED zlib)
 pkg_check_modules(PNG REQUIRED libpng)
-list(APPEND INCLUDES ${SDL_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
-list(APPEND FLAGS ${SDL_COMPILE_FLAGS} ${ZLIB_COMPILE_FLAGS})
+list(APPEND INCLUDES ${ZLIB_INCLUDE_DIRS})
+list(APPEND FLAGS ${ZLIB_COMPILE_FLAGS})
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
@@ -113,8 +111,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
         list(APPEND LIBS libstdc++.a)
     endif()
 
-    list(APPEND LIBS libSDL2.a libz.a libpng.a opengl32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 dinput8)
-    list(APPEND DEFINES SDL_MAIN_HANDLED)
+    list(APPEND LIBS libz.a libpng.a opengl32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 dinput8)
     list(APPEND PLATFORM_SOURCES
         ../common/video/opengl/wgl_context.cpp
         ../external/glad/src/wgl.c
@@ -128,7 +125,7 @@ else()
     endif()
 
     list(APPEND INCLUDES ${WAYLAND_INCLUDE_DIRS} ${X11_INCLUDE_DIRS})
-    list(APPEND LIBS ${WAYLAND_LIBRARIES} ${PNG_LIBRARIES} ${X11_LIBRARIES} ${ZLIB_LIBRARIES} ${SDL_LIBRARIES})
+    list(APPEND LIBS ${WAYLAND_LIBRARIES} ${PNG_LIBRARIES} ${X11_LIBRARIES} ${ZLIB_LIBRARIES})
     list(APPEND FLAGS ${WAYLAND_CFLAGS})
 
     pkg_check_modules(PULSEAUDIO libpulse)
@@ -156,8 +153,42 @@ else()
     ../external/glad/src/egl.c)
 endif()
 
+set(USE_SYSTEM_SDL3 CACHE BOOL OFF)
+
+if (USE_SYSTEM_SDL3)
+    find_package(SDL3 QUIET)
+endif()
+
+if (SDL3_FOUND)
+    message("Using system SDL3.")
+    list(APPEND LIBS SDL3::SDL3)
+    list(APPEND INCLUDES ${SDL3_INCLUDE_DIRS})
+else()
+    include(FetchContent)
+    FetchContent_Declare(
+        SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.4.8
+        GIT_SHALLOW TRUE
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+    )
+    message(STATUS "Using SDL3 via FetchContent")
+    set(SDL_UNIX_CONSOLE_BUILD FORCE CACHE BOOL ON)
+    set(SDL_GPU CACHE BOOL OFF)
+    set(SDL_VIDEO CACHE BOOL OFF)
+    set(SDL_RENDER CACHE BOOL OFF)
+    set(SDL_SHARED BOOL FALSE)
+    set(SDL_STATIC BOOL TRUE)
+    FetchContent_MakeAvailable(SDL3)
+    list(APPEND INCLUDES ${SDL3_SOURCE_DIR}/include)
+    list(APPEND LIBS SDL3::SDL3-static)
+endif()
+
+list(APPEND DEFINES SDL_MAIN_HANDLED)
+
 list(APPEND PLATFORM_SOURCES ../external/fmt/src/format.cc)
-list(APPEND INCLUDES ../external/fmt/include)
+list(PREPEND INCLUDES ../external/fmt/include)
 
 list(APPEND QT_GUI_SOURCES
     src/main.cpp
@@ -184,8 +215,8 @@ list(APPEND QT_GUI_SOURCES
     src/EmuCanvasOpenGL.cpp
     src/EmuCanvasVulkan.cpp
     ../external/glad/src/gl.c
-    ../common/audio/s9x_sound_driver_sdl.cpp
-    ../common/audio/s9x_sound_driver_sdl.hpp
+    ../common/audio/s9x_sound_driver_sdl3.cpp
+    ../common/audio/s9x_sound_driver_sdl3.hpp
     ../common/audio/s9x_sound_driver_cubeb.cpp
     ../common/audio/s9x_sound_driver_cubeb.hpp
     ../filter/2xsai.cpp
@@ -216,11 +247,10 @@ list(APPEND LIBS cubeb)
 list(APPEND INCLUDES "../external/cubeb/include")
 
 set(BUILD_TESTING CACHE BOOL OFF)
+set(ENABLE_OPT 0)
 add_subdirectory("../external/glslang" "glslang" EXCLUDE_FROM_ALL)
 list(APPEND LIBS
     glslang
-    OGLCompiler
-    HLSL
     OSDependent
     SPIRV
     glslang-default-resource-limits)

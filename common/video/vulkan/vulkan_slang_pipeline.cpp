@@ -3,7 +3,7 @@
 namespace Vulkan
 {
 
-static VkFormat format_string_to_format(std::string target, VkFormat default_format)
+static VkFormat format_string_to_format(const std::string &target, VkFormat default_format)
 {
     struct
     {
@@ -51,13 +51,13 @@ static VkFormat format_string_to_format(std::string target, VkFormat default_for
     return default_format;
 }
 
-vk::SamplerAddressMode wrap_mode_from_string(std::string s)
+vk::SamplerAddressMode wrap_mode_from_string(const std::string &mode_string)
 {
-    if (s == "clamp_to_border")
+    if (mode_string == "clamp_to_border")
         return vk::SamplerAddressMode::eClampToBorder;
-    if (s == "repeat")
+    if (mode_string == "repeat")
         return vk::SamplerAddressMode::eRepeat;
-    if (s == "mirrored_repeat")
+    if (mode_string == "mirrored_repeat")
         return vk::SamplerAddressMode::eMirroredRepeat;
 
     return vk::SamplerAddressMode::eClampToBorder;
@@ -116,7 +116,7 @@ bool SlangPipeline::generate_pipeline(bool lastpass)
         .setAttachment(0)
         .setLayout(vk::ImageLayout::eColorAttachmentOptimal);
 
-    std::array<vk::SubpassDependency, 2> subpass_dependency;
+    std::array<vk::SubpassDependency, 1> subpass_dependency;
     subpass_dependency[0]
         .setSrcSubpass(VK_SUBPASS_EXTERNAL)
         .setDstSubpass(0)
@@ -124,14 +124,6 @@ bool SlangPipeline::generate_pipeline(bool lastpass)
         .setSrcAccessMask(vk::AccessFlagBits(0))
         .setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
         .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
-
-    subpass_dependency[1]
-        .setSrcSubpass(VK_SUBPASS_EXTERNAL)
-        .setDstSubpass(0)
-        .setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-        .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
-        .setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
-        .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
 
     auto subpass_description = vk::SubpassDescription{}
         .setColorAttachments(attachment_reference)
@@ -347,7 +339,10 @@ bool SlangPipeline::generate_frame_resources(vk::DescriptorPool pool)
             .setFlags(vma::AllocationCreateFlagBits::eHostAccessSequentialWrite)
             .setRequiredFlags(vk::MemoryPropertyFlagBits::eHostVisible);
 
-        std::tie(uniform_buffer, uniform_buffer_allocation) = context->allocator.createBuffer(buffer_create_info, allocation_create_info).value;
+        auto result = context->allocator.createBuffer(buffer_create_info, allocation_create_info);
+        assert(result.has_value());
+        uniform_buffer = std::get<vk::Buffer>(result.value);
+        uniform_buffer_allocation = std::get<vma::Allocation>(result.value);
     }
     else
     {

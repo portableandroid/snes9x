@@ -11,8 +11,7 @@ class Context;
 class Swapchain
 {
   public:
-    Swapchain(Context &);
-    ~Swapchain();
+    explicit Swapchain(Context &);
     bool create();
     bool uncreate();
     bool recreate();
@@ -29,8 +28,9 @@ class Swapchain
     bool end_frame();
     void end_frame_without_swap();
     bool swap();
+    void present_wait();
     void set_vsync(bool on);
-    void on_render_pass_end(std::function<void()> function);
+    void on_render_pass_end(const std::function<void()> &function);
     int get_num_frames() { return num_swapchain_images; }
     vk::PresentModeKHR get_present_mode();
 

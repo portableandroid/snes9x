@@ -227,7 +227,7 @@ void S9xLoadConfigFiles (char **argv, int argc)
 	Settings.Stereo                     =  conf.GetBool("Sound::Stereo",                       true);
 	Settings.ReverseStereo              =  conf.GetBool("Sound::ReverseStereo",                false);
 	Settings.SoundPlaybackRate          =  conf.GetUInt("Sound::Rate",                         48000);
-	Settings.SoundInputRate             =  conf.GetUInt("Sound::InputRate",                    31950);
+	Settings.SoundInputRate             =  conf.GetUInt("Sound::InputRate",                    32040);
 	Settings.Mute                       =  conf.GetBool("Sound::Mute",                         false);
 	Settings.DynamicRateControl         =  conf.GetBool("Sound::DynamicRateControl",           false);
 	Settings.DynamicRateLimit           =  conf.GetInt ("Sound::DynamicRateLimit",             5);
@@ -302,6 +302,7 @@ void S9xLoadConfigFiles (char **argv, int argc)
 	Settings.BlockInvalidVRAMAccessMaster   = !conf.GetBool("Hack::AllowInvalidVRAMAccess",        false);
 	Settings.HDMATimingHack                 =  conf.GetInt ("Hack::HDMATiming",                    100);
 	Settings.MaxSpriteTilesPerLine          =  conf.GetInt ("Hack::MaxSpriteTilesPerLine",         34);
+    Settings.DisableGSUCycleMode            = conf.GetBool("Hack::DisableGSUCycleMode", false);
 
 	// Netplay
 
@@ -705,6 +706,9 @@ char * S9xParseArgs (char **argv, int argc)
 			if (!strcasecmp(argv[i], "-invalidvramaccess"))
 				Settings.BlockInvalidVRAMAccessMaster = FALSE;
 			else
+            if (!strcasecmp(argv[i], "-disablegsucyclemode"))
+                Settings.DisableGSUCycleMode = TRUE;
+            else
 
 			// OTHER OPTIONS
 

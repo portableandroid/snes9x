@@ -7,6 +7,7 @@
 #include <qnamespace.h>
 #include <QStyle>
 #include <QStyleHints>
+#include <QCommandLineParser>
 
 #ifndef _WIN32
 #include <csignal>
@@ -25,13 +26,19 @@ int main(int argc, char *argv[])
     EmuApplication emu;
     emu.qtapp = std::make_unique<QApplication>(argc, argv);
 
-    QGuiApplication::setDesktopFileName("snes9x-gtk");
+    QCommandLineParser parser;
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addPositionalArgument("filename", "ROM file name");
+    parser.process(emu.qtapp->arguments());
 
-    if (emu.qtapp->platformName() == "windows")
+    QGuiApplication::setDesktopFileName("snes9x-qt");
+
+    if (QApplication::platformName() == "windows")
     {
-        if (emu.qtapp->styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+        if (QApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
         {
-            emu.qtapp->setStyle("fusion");
+            QApplication::setStyle("fusion");
 
             const QColor darkGray(53, 53, 53);
             const QColor gray(128, 128, 128);
@@ -59,11 +66,11 @@ int main(int argc, char *argv[])
             darkPalette.setColor(QPalette::Disabled, QPalette::WindowText, gray);
             darkPalette.setColor(QPalette::Disabled, QPalette::Text, gray);
             darkPalette.setColor(QPalette::Disabled, QPalette::Light, darkGray);
-            emu.qtapp->setPalette(darkPalette);
+            QApplication::setPalette(darkPalette);
         }
         else
         {
-            emu.qtapp->setStyle("windowsvista");
+            QApplication::setStyle("windowsvista");
         }
     }
 
@@ -85,6 +92,18 @@ int main(int argc, char *argv[])
 
     emu.updateBindings();
     emu.startInputTimer();
+
+    if (!parser.positionalArguments().empty())
+    {
+        QTimer *timer = new QTimer();
+        timer->setTimerType(Qt::CoarseTimer);
+        timer->setSingleShot(true);
+        timer->callOnTimeout([&] {
+            emu.window->openFile(parser.positionalArguments().front().toStdString());
+        });
+        timer->start();
+    }
+
     emu.qtapp->exec();
 
     emu.stopThread();

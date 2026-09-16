@@ -4,7 +4,7 @@
    For further information, consult the LICENSE file in the root directory.
 \*****************************************************************************/
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/stat.h>
 #include <filesystem>
 
@@ -107,8 +107,8 @@ int Snes9xConfig::load_defaults()
     sound_driver = 0;
     sound_buffer_size = 48;
     sound_playback_rate = 7;
-    sound_input_rate = 31950;
-    auto_input_rate = true;
+    sound_input_rate = 32040;
+    auto_input_rate = false;
     last_directory.clear();
     last_shader_directory.clear();
     window_width = -1;
@@ -159,7 +159,7 @@ int Snes9xConfig::load_defaults()
     Settings.MultiPlayer5Master = true;
     Settings.UpAndDown = false;
     Settings.AutoSaveDelay = 0;
-    Settings.SkipFrames = 0;
+    Settings.SkipFrames = THROTTLE_TIMER_FRAMESKIP;
     Settings.Transparency = true;
     Settings.DisplayTime = false;
     Settings.DisplayFrameRate = false;
@@ -182,7 +182,10 @@ int Snes9xConfig::load_defaults()
     Settings.NetPlay = false;
     NetPlay.Paused = false;
     NetPlay.MaxFrameSkip = 10;
+    Settings.TurboSkipFrames = 15;
     Settings.DisplayPressedKeys = false;
+    Settings.InitialInfoStringTimeout   =  120;
+    
 #ifdef ALLOW_CPU_OVERCLOCK
     Settings.MaxSpriteTilesPerLine = 34;
     Settings.OneClockCycle = 6;
@@ -205,15 +208,15 @@ int Snes9xConfig::save_config_file()
     ConfigFile cf;
     std::string section;
 
-    auto outbool = [&](std::string name, bool b, std::string comment = "") {
+    auto outbool = [&](const std::string &name, bool b, const std::string &comment = "") {
         cf.SetBool((section + "::" + name).c_str(), b, "true", "false", comment.c_str());
     };
 
-    auto outstring = [&](std::string name, std::string str, std::string comment = "") {
+    auto outstring = [&](const std::string &name, const std::string &str, const std::string &comment = "") {
         cf.SetString((section + "::" + name).c_str(), str, comment.c_str());
     };
 
-    auto outint = [&](std::string name, int i, std::string comment = "") {
+    auto outint = [&](const std::string &name, int i, const std::string &comment = "") {
         cf.SetInt((section + "::" + name).c_str(), i, comment.c_str());
     };
 
@@ -236,7 +239,9 @@ int Snes9xConfig::save_config_file()
     outint("SplashBackground", splash_image, "0: Black, 1: Color bars, 2: Pattern, 3: Blue, 4: Default");
     outbool("AutoVRR", auto_vrr, "Automatically use the best settings for variable sync in fullscreen mode");
     outint("OSDSize", osd_size, "Size of on-screen display elements. Default: 24pt");
-
+    outint("MessageDisplayTime", Settings.InitialInfoStringTimeout, "Display timeout length of messages, in frames. Set to 0 to disable all message text. Default: 120.");
+    
+    
     section = "NTSC";
     outstring("Hue", std::to_string(ntsc_setup.hue));
     outstring("Saturation", std::to_string(ntsc_setup.saturation));
@@ -288,7 +293,7 @@ int Snes9xConfig::save_config_file()
     outbool("UIVisible", ui_visible);
     outbool("EnableIcons", enable_icons);
     if (default_esc_behavior != ESC_TOGGLE_MENUBAR)
-        outbool("Fullscreen", 0);
+        outbool("Fullscreen", false);
     else
         outbool("Fullscreen", fullscreen);
 
@@ -325,8 +330,8 @@ int Snes9xConfig::save_config_file()
     section = "Hacks";
     outint("SuperFXClockMultiplier", Settings.SuperFXClockMultiplier);
     outint("SoundInterpolationMethod", Settings.InterpolationMethod, "0: None, 1: Linear, 2: Gaussian (what the hardware uses), 3: Cubic, 4: Sinc");
-    outbool("RemoveSpriteLimit", Settings.MaxSpriteTilesPerLine == 34 ? 0 : 1);
-    outbool("OverclockCPU", Settings.OneClockCycle == 6 ? 0 : 1);
+    outbool("RemoveSpriteLimit", Settings.MaxSpriteTilesPerLine != 34);
+    outbool("OverclockCPU", Settings.OneClockCycle != 6);
     outbool("EchoBufferHack", Settings.SeparateEchoBuffer, "Prevents echo buffer from overwriting APU RAM");
 
     section = "Input";
@@ -384,8 +389,8 @@ int Snes9xConfig::save_config_file()
         outstring(b_links[i].snes9x_name, shortcut[i - NUM_JOYPAD_LINKS].as_string());
     }
 
-    cf.SetNiceAlignment(true);
-    cf.SetShowComments(true);
+    ConfigFile::SetNiceAlignment(true);
+    ConfigFile::SetShowComments(true);
     cf.SaveTo(get_config_file_name().c_str());
 
     return 0;
@@ -401,7 +406,7 @@ int Snes9xConfig::load_config_file()
     {
         if (!fs::create_directory(path))
         {
-            fmt::print(stderr, _("Couldn't create config directory: {}\n"), path.string());
+            fmt::print(stderr, fmt::runtime(_("Couldn't create config directory: {}\n")), path.string());
             return -1;
         }
     }
@@ -424,22 +429,22 @@ int Snes9xConfig::load_config_file()
     std::string none;
     std::string section;
 
-    auto inbool = [&](std::string name, auto &b) {
+    auto inbool = [&](const std::string &name, auto &b) {
         if (cf.Exists((section + "::" + name).c_str()))
             b = cf.GetBool((section + "::" + name).c_str());
     };
 
-    auto inint = [&](std::string name, auto &i) {
+    auto inint = [&](const std::string &name, auto &i) {
         if (cf.Exists((section + "::" + name).c_str()))
             i = cf.GetInt((section + "::" + name).c_str());
     };
 
-    auto indouble = [&](std::string name, double &d) {
+    auto indouble = [&](const std::string &name, double &d) {
         if (cf.Exists((section + "::" + name).c_str()))
             d = atof(cf.GetString((section + "::" + name).c_str()));
     };
 
-    auto instr = [&](std::string name, std::string &str) {
+    auto instr = [&](const std::string &name, std::string &str) {
         str = cf.GetString((section + "::" + name).c_str(), none);
     };
 
@@ -462,6 +467,7 @@ int Snes9xConfig::load_config_file()
     inint("SplashBackground", splash_image);
     inbool("AutoVRR", auto_vrr);
     inint("OSDSize", osd_size);
+    inint("MessageDisplayTime", Settings.InitialInfoStringTimeout);
 
     section = "NTSC";
     indouble("Hue", ntsc_setup.hue);

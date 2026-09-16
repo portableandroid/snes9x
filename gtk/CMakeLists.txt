@@ -14,7 +14,7 @@ option(USE_SYSTEMZIP "Force use of system minizip" ON)
 option(USE_WAYLAND "Build support for Wayland" ON)
 option(DANGEROUS_HACKS "Allow dangerous hacks to be used" ON)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -89,11 +89,10 @@ if(USE_SLANG)
 
     set(SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS CACHE BOOL ON)
     set(BUILD_TESTING CACHE BOOL OFF)
+    set(ENABLE_OPT 0)
     add_subdirectory("../external/glslang" "glslang" EXCLUDE_FROM_ALL)
     add_subdirectory("../external/SPIRV-Cross" "SPIRV-Cross" EXCLUDE_FROM_ALL)
     list(APPEND LIBS glslang
-                     OGLCompiler
-                     HLSL
                      OSDependent
                      SPIRV
                      glslang-default-resource-limits)
@@ -368,6 +367,7 @@ set(LIBJMA_SOURCES
 add_library(jma ${LIBJMA_SOURCES})
 target_include_directories(jma PRIVATE ${INCLUDES})
 target_compile_options(jma PUBLIC ${ARGS})
+target_compile_definitions(jma PRIVATE ${DEFINES})
 list(APPEND LIBS jma)
 
 add_executable(sourcify src/sourcify.c)

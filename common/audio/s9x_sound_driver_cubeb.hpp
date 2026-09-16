@@ -4,19 +4,16 @@
    For further information, consult the LICENSE file in the root directory.
 \*****************************************************************************/
 
-#ifndef __S9X_SOUND_DRIVER_CUBEB_HPP
-#define __S9X_SOUND_DRIVER_CUBEB_HPP
-
+#pragma once
 #include "s9x_sound_driver.hpp"
 #include <cstdint>
 #include "cubeb/cubeb.h"
-#include "../../apu/resampler.h"
+#include "../../common/audio/atomic_ring_buffer.hpp"
 
 class S9xCubebSoundDriver : public S9xSoundDriver
 {
   public:
-    S9xCubebSoundDriver();
-    ~S9xCubebSoundDriver();
+    ~S9xCubebSoundDriver() override;
     void init() override;
     void deinit() override;
     bool open_device(int playback_rate, int buffer_size) override;
@@ -28,9 +25,7 @@ class S9xCubebSoundDriver : public S9xSoundDriver
     std::pair<int, int> buffer_level() override;
 
   private:
-    Resampler buffer;
+    atomic_ring_buffer<int16_t> buffer;
     cubeb *context = nullptr;
     cubeb_stream *stream = nullptr;
 };
-
-#endif /* __S9X_SOUND_DRIVER_SDL_HPP */

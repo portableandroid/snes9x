@@ -7,14 +7,14 @@
 // Abstract the details of reading from zip files versus FILE *'s.
 
 #include <string>
+#include "snes9x.h"
 #ifdef UNZIP_SUPPORT
 #  ifdef SYSTEM_ZIP
 #    include <minizip/unzip.h>
 #  else
-#    include "unzip.h"
+#    include "unzip/unzip.h"
 #  endif
 #endif
-#include "snes9x.h"
 #include "stream.h"
 
 
